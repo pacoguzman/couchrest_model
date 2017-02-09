@@ -23,7 +23,15 @@ module CouchRest
         # unless the use_database method has been used, in which
         # case a new connection will be started.
         def database
-          @database ||= prepare_database(super)
+          @database ||= begin
+            if defined?(@_use_database) && @_use_database.present?
+              # Avoid defining @database variable when calling super if we're going to use other database
+              # this avoid threading issues
+              prepare_database
+            else
+              prepare_database(super)
+            end
+          end
         end
 
         def server
@@ -33,15 +41,18 @@ module CouchRest
         def prepare_database(db = nil, override_use_database = false)
           db = @_use_database unless override_use_database || @_use_database.nil?
           if db.nil? || db.is_a?(String) || db.is_a?(Symbol)
-            conf = connection_configuration
-            db = [conf[:prefix], db.to_s, conf[:suffix]].reject{|s| s.to_s.empty?}.join(conf[:join])
-            self.server.database!(db)
+            self.server.database! compute_database_name(db)
           else
             db
           end
         end
 
         protected
+
+        def compute_database_name(db = nil)
+          conf = connection_configuration
+          [conf[:prefix], db.to_s, conf[:suffix]].reject{|s| s.to_s.empty?}.join(conf[:join])
+        end
 
         def prepare_server_uri
           conf = connection_configuration
